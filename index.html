@@ -4,12 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>班级积分系统 - 云端版</title>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script crossorigin src="scripts/react.production.min.js"></script>
+    <script crossorigin src="scripts/react-dom.production.min.js"></script>
+    <script src="scripts/babel.min.js"></script>
+    <script src="scripts/xlsx.full.min.js"></script>
+    <script src="scripts/tailwindcss.min.js"></script>
+    <script src="scripts/html2canvas.min.js"></script>
     <!--
     ╔══════════════════════════════════════════════════════════════╗
     ║  [原 Supabase 客户端 - 已迁移至 MySQL，暂时保留供回滚]         ║
@@ -224,9 +224,9 @@
         // 说明：前端通过 fetch 调用同目录下的 PHP 文件完成数据交互
         // ----------------------------------------------------------------
         const PHP_API = {
-            login:          '/test_project/login.php',           // 登录验证接口
-            changePassword: '/test_project/change_password.php', // 修改密码接口
-            api:            '/test_project/api.php',             // 统一数据接口
+            login:          '/class_point/login.php',           // 登录验证接口
+            changePassword: '/class_point/change_password.php', // 修改密码接口
+            api:            '/class_point/api.php',             // 统一数据接口
         };
 
         // 统一API调用函数
@@ -2278,22 +2278,49 @@
                 setTimeout(() => setUploadMessage(''), 2000);
             };
 
-            // 完成背诵
             const completeRecitation = (studentId) => {
-                setRecitationCompleted(prev => {
-                    if (prev.includes(studentId)) {
-                        return prev.filter(id => id !== studentId);
-                    } else {
-                        return [...prev, studentId];
-                    }
-                });
-                
                 const student = students.find(s => s.id === studentId);
                 const isCompleted = recitationCompleted.includes(studentId);
-                setUploadMessage(isCompleted ? 
-                    `❌ ${student?.name || ''} 取消完成标记` : 
-                    `✅ ${student?.name || ''} 已完成背诵`
-                );
+
+                if (isCompleted) {
+                    // 取消完成：从已完成列表移除，并扣除2分
+                    setRecitationCompleted(prev => prev.filter(id => id !== studentId));
+                    setStudents(prev => prev.map(s =>
+                        s.id === studentId
+                            ? { ...s, points: s.points - 2, availablePoints: (s.availablePoints || 0) - 2 }
+                            : s
+                    ));
+                    const cancelRecord = {
+                        id: Date.now() + Math.random(),
+                        studentId: studentId,
+                        studentName: student?.name || '',
+                        points: -2,
+                        rule: '取消全班任务完成',
+                        time: new Date().toISOString(),
+                        type: 'subtract'
+                    };
+                    setHistory(prev => [cancelRecord, ...prev]);
+                    setUploadMessage(`❌ ${student?.name || ''} 取消完成标记，扣除2分`);
+                } else {
+                    // 标记完成：加入已完成列表，并加2分
+                    setRecitationCompleted(prev => [...prev, studentId]);
+                    setStudents(prev => prev.map(s =>
+                        s.id === studentId
+                            ? { ...s, points: s.points + 2, availablePoints: (s.availablePoints || 0) + 2 }
+                            : s
+                    ));
+                    const addRecord = {
+                        id: Date.now() + Math.random(),
+                        studentId: studentId,
+                        studentName: student?.name || '',
+                        points: 2,
+                        rule: '完成全班任务',
+                        time: new Date().toISOString(),
+                        type: 'add'
+                    };
+                    setHistory(prev => [addRecord, ...prev]);
+                    setUploadMessage(`✅ ${student?.name || ''} 已完成任务，获得2分`);
+                }
                 setTimeout(() => setUploadMessage(''), 2000);
             };
 

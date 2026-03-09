@@ -202,7 +202,11 @@ try {
                 $hId = ($h['id'] ?? 0);
                 if ($hId <= 0 || $hId > 9223372036854775807) $hId = $index + 1;
                 $time = $h['time'] ?? date('Y-m-d H:i:s');
-                if (is_numeric($time)) $time = date('Y-m-d H:i:s', $time / 1000);
+                if (is_numeric($time)) {
+                    $time = date('Y-m-d H:i:s', $time / 1000);
+                } elseif ($timestamp = strtotime($time)) {
+                    $time = date('Y-m-d H:i:s', $timestamp);
+                }
                 $stmt->execute([
                     ':id'         => $hId,
                     ':class_id'   => $classId,
@@ -228,7 +232,11 @@ try {
         case 'add_history':
             $h    = $body['history_item'] ?? [];
             $time = $h['time'] ?? date('Y-m-d H:i:s');
-            if (is_numeric($time)) $time = date('Y-m-d H:i:s', $time / 1000);
+            if (is_numeric($time)) {
+                $time = date('Y-m-d H:i:s', $time / 1000);
+            } elseif ($timestamp = strtotime($time)) {
+                $time = date('Y-m-d H:i:s', $timestamp);
+            }
 
             $stmt = $pdo->prepare(
                 "INSERT INTO point_history (class_id, student_id, rule_name, points, note, created_at)
