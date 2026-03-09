@@ -649,9 +649,9 @@
                 const loadFromLocal = async () => {
                     console.log('🔄 页面初始化：从本地加载数据');
 
-                    // 从 localStorage 加载学生数据
+                    // 从 localStorage 加载学生数据（仅用于未登录状态）
                     const savedStudents = localStorage.getItem('students');
-                    if (savedStudents) {
+                    if (savedStudents && !userInfo?.classId) {
                         try {
                             const parsedStudents = JSON.parse(savedStudents);
                             console.log('📦 从 localStorage 加载了', parsedStudents.length, '个学生');
@@ -743,17 +743,19 @@
                         let loadedStudents = []; // 先声明在外层，确保后面可以访问
                         if (data.students && data.students.length > 0) {
                             loadedStudents = data.students.map(s => {
+                                // 先转换性别：'男'/'女' -> 'male'/'female'
+                                const normalizedGender = s.gender === '女' ? 'female' : (s.gender === '男' ? 'male' : (s.gender || 'male'));
                                 let cleanAvatar = s.avatar || '';
                                 if (!cleanAvatar || cleanAvatar.startsWith('data:image')) {
-                                    cleanAvatar = s.gender === 'female' ? '👧' : '👦';
+                                    cleanAvatar = normalizedGender === 'female' ? '👧' : '👦';
                                 }
                                 return {
                                     id: s.student_id,
                                     name: s.name,
-                                    gender: s.gender || 'male',
+                                    gender: normalizedGender,
                                     points: parseInt(s.points) || 0,
                                     availablePoints: parseInt(s.available_points) || 0,
-                                    group: s.group_number || 1,
+                                    group: parseInt(s.group_number) || 1,
                                     avatar: cleanAvatar,
                                 };
                             });
@@ -1101,11 +1103,11 @@
                         loadedStudents = data.students.map(s => ({
                             id: s.student_id,
                             name: s.name,
-                            gender: s.gender || 'male',
+                            gender: s.gender === '女' ? 'female' : (s.gender === '男' ? 'male' : (s.gender || 'male')),
                             points: parseInt(s.points) || 0,
                             availablePoints: parseInt(s.available_points) || 0,
-                            group: s.group_number || 1,
-                            avatar: (!s.avatar || s.avatar.startsWith('data:')) ? (s.gender === 'female' ? '👧' : '👦') : s.avatar,
+                            group: parseInt(s.group_number) || 1,
+                            avatar: (!s.avatar || s.avatar.startsWith('data:')) ? ((s.gender === '女' || s.gender === 'female') ? '👧' : '👦') : s.avatar,
                         }));
                         setStudents(loadedStudents);
                     }
@@ -1363,14 +1365,23 @@
                             points: 0,
                             availablePoints: 0
                         }));
-                        setStudents(resetStudents);
-                        
-                        // 清空历史记录
+
+                        // 先同步学生积分归零数据到MySQL（避免数据丢失）
+                        if (userInfo?.classId) {
+                            try {
+                                await callAPI('sync_students', userInfo.classId, { students: resetStudents });
+                                console.log('✅ 学生积分已同步归零');
+                            } catch (error) {
+                                console.error('❌ 同步学生数据失败:', error);
+                            }
+                        }
+
+                        // 再清空历史记录
                         setHistory([]);
-                        
+
                         // 清空操作历史
                         setOperationHistory([]);
-                        
+
                         // 同步删除MySQL历史记录
                         if (userInfo?.classId) {
                             try {
@@ -1380,7 +1391,10 @@
                                 console.error('❌ 清空MySQL历史记录失败:', error);
                             }
                         }
-                        
+
+                        // 最后更新前端状态
+                        setStudents(resetStudents);
+
                         setUploadMessage('✅ 已重置所有学生积分为0分，历史记录已清空（备份已保存到下载文件夹）');
                         setTimeout(() => setUploadMessage(''), 3000);
                     }
@@ -2502,9 +2516,15 @@
                 const oldGroup = oldStudent?.group;
                 const newGroup = parseInt(group);
                 
-                setStudents(students.map(s => 
-                    s.id === id ? { ...s, name: name.trim(), gender, group: newGroup } : s
-                ));
+                setStudents(students.map(s => {
+                    if (s.id !== id) return s;
+                    // 判断是否使用默认emoji头像（没有自定义图片）
+                    const isDefaultAvatar = !s.avatarThumb;
+                    const newAvatar = isDefaultAvatar
+                        ? (gender === 'female' ? '👧' : '👦')
+                        : s.avatar;
+                    return { ...s, name: name.trim(), gender, group: newGroup, avatar: newAvatar };
+                }));
                 
                 if (oldGroup !== newGroup) {
                     setUploadMessage(`✅ 已更新学生信息：${name}（从第${oldGroup}组调整到第${newGroup}组，小组积分已自动重新计算）`);
@@ -2617,7 +2637,7 @@
                 s.name.toLowerCase().includes(searchTerm.toLowerCase())
             );
 
-            const groups = [...new Set(students.map(s => s.group))].sort((a, b) => a - b);
+            const groups = [...new Set(students.map(s => parseInt(s.group)))].sort((a, b) => a - b);
             
             // 数字转汉字
             const numberToChinese = (num) => {
@@ -3390,12 +3410,16 @@
                                                                                 查看记录
                                                                             </button>
                                                                                 <button
-                                                                                    onClick={() => setEditingStudent({
-                                                                                        id: student.id,
-                                                                                        name: student.name,
-                                                                                        gender: student.gender,
-                                                                                        group: student.group
-                                                                                    })}
+                                                                                    onClick={() => {
+                                                                                        // 转换 gender 值：'男'/'女' -> 'male'/'female'
+                                                                                        const normalizedGender = student.gender === '女' ? 'female' : (student.gender === '男' ? 'male' : student.gender);
+                                                                                        setEditingStudent({
+                                                                                            id: student.id,
+                                                                                            name: student.name,
+                                                                                            gender: normalizedGender,
+                                                                                            group: student.group
+                                                                                        });
+                                                                                    }}
                                                                                     className="flex-1 bg-gradient-to-r from-amber-500 to-orange-500 text-white py-2 rounded-lg hover:from-amber-600 hover:to-orange-600 transition font-semibold flex items-center justify-center gap-1"
                                                                                 >
                                                                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -7919,8 +7943,8 @@
                                                     <input
                                                         type="radio"
                                                         name="gender"
-                                                        value="男"
-                                                        checked={newStudent.gender === '男'}
+                                                        value="male"
+                                                        checked={newStudent.gender === 'male'}
                                                         onChange={(e) => setNewStudent({...newStudent, gender: e.target.value})}
                                                         className="w-4 h-4 text-blue-500"
                                                     />
@@ -7930,8 +7954,8 @@
                                                     <input
                                                         type="radio"
                                                         name="gender"
-                                                        value="女"
-                                                        checked={newStudent.gender === '女'}
+                                                        value="female"
+                                                        checked={newStudent.gender === 'female'}
                                                         onChange={(e) => setNewStudent({...newStudent, gender: e.target.value})}
                                                         className="w-4 h-4 text-pink-500"
                                                     />
