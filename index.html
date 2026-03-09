@@ -2324,12 +2324,69 @@
                 setTimeout(() => setUploadMessage(''), 2000);
             };
 
+            // 添加规则
+            const addRule = (name, points, type) => {
+                const newRule = {
+                    id: Date.now(),
+                    name,
+                    points,
+                    type
+                };
+                setPointRules(prev => [...prev, newRule]);
+                setUploadMessage(`✅ 已添加${type === 'add' ? '加分' : '减分'}规则：${name}`);
+                setTimeout(() => setUploadMessage(''), 2000);
+            };
+
             // 删除规则
             const deleteRule = async (ruleId) => {
                 if (!confirm('确定要删除这条积分规则吗？')) return;
                 setPointRules(prev => prev.filter(r => r.id !== ruleId));
                 setUploadMessage('✅ 规则已删除');
                 setTimeout(() => setUploadMessage(''), 2000);
+            };
+
+            // 拖拽开始
+            const handleDragStart = (e, rule) => {
+                setDraggedRule(rule);
+                e.dataTransfer.effectAllowed = 'move';
+            };
+
+            // 拖拽结束
+            const handleDragEnd = () => {
+                setDraggedRule(null);
+            };
+
+            // 拖拽经过
+            const handleDragOver = (e, rule) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                if (draggedRule && draggedRule.id !== rule.id) {
+                    setDragOverRule(rule);
+                }
+            };
+
+            // 拖拽离开
+            const handleDragLeave = () => {
+                setDragOverRule(null);
+            };
+
+            // 拖拽放置
+            const handleDrop = (e, targetRule) => {
+                e.preventDefault();
+                setDragOverRule(null);
+                if (!draggedRule || draggedRule.id === targetRule.id) return;
+
+                const draggedIndex = pointRules.findIndex(r => r.id === draggedRule.id);
+                const targetIndex = pointRules.findIndex(r => r.id === targetRule.id);
+
+                if (draggedIndex < 0 || targetIndex < 0) return;
+
+                const newRules = [...pointRules];
+                const [removed] = newRules.splice(draggedIndex, 1);
+                newRules.splice(targetIndex, 0, removed);
+
+                setPointRules(newRules);
+                setDraggedRule(null);
             };
 
             // 兑换商品
